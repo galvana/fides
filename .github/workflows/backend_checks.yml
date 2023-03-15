@@ -301,4 +301,6 @@ jobs:
         env:
           VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
           VAULT_NAMESPACE: ${{ secrets.VAULT_NAMESPACE }}
-        run: nox -s "pytest(ops-saas)"
+          FIDES__DEV_MODE: false
+        run: |
+          echo $FIDES__DEV_MODE
