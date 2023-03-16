@@ -183,6 +183,7 @@ markers = [
     "integration_mariadb",
     "integration_bigquery",
     "integration_saas",
+    "integration_saas_test",
     "integration_saas_override",
     "integration_mailchimp",
     "integration_zendesk",

@@ -4,7 +4,7 @@ from fides.api.ops.models.policy import Policy
 from tests.ops.integration_tests.saas.connector_runner import ConnectorRunner
 
 
-@pytest.mark.integration_saas
+@pytest.mark.integration_saas_test
 class TestZendeskConnector:
     def test_connection(self, zendesk_runner: ConnectorRunner):
         zendesk_runner.test_connection()
