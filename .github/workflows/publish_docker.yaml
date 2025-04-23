@@ -150,52 +150,52 @@ jobs:
       - name: Create and Push Dev Manifest
         if: needs.ParseTags.outputs.prod_tag == 'false' && needs.ParseTags.outputs.rc_tag == 'false' && needs.ParseTags.outputs.beta_tag == 'false' && needs.ParseTags.outputs.alpha_tag == 'false'
         run: |
-          docker manifest create ethyca/${{ matrix.image_name }}:dev \
-            --amend ethyca/${{ matrix.image_name }}:dev-amd64 \
-            --amend ethyca/${{ matrix.image_name }}:dev-arm64
-          docker manifest push ethyca/${{ matrix.image_name }}:dev
+          docker manifest create thegalvanizer/${{ matrix.image_name }}:dev \
+            --amend thegalvanizer/${{ matrix.image_name }}:dev-amd64 \
+            --amend thegalvanizer/${{ matrix.image_name }}:dev-arm64
+          docker manifest push thegalvanizer/${{ matrix.image_name }}:dev
 
       - name: Create and Push Prod Manifest
         if: needs.ParseTags.outputs.prod_tag == 'true'
         run: |
           # Create and push version manifest
-          docker manifest create ethyca/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }} \
-            --amend ethyca/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}-amd64 \
-            --amend ethyca/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}-arm64
-          docker manifest push ethyca/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}
+          docker manifest create thegalvanizer/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }} \
+            --amend thegalvanizer/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}-amd64 \
+            --amend thegalvanizer/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}-arm64
+          docker manifest push thegalvanizer/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}
           # Create and push latest manifest
-          docker manifest create ethyca/${{ matrix.image_name }}:latest \
-            --amend ethyca/${{ matrix.image_name }}:latest-amd64 \
-            --amend ethyca/${{ matrix.image_name }}:latest-arm64
-          docker manifest push ethyca/${{ matrix.image_name }}:latest
+          docker manifest create thegalvanizer/${{ matrix.image_name }}:latest \
+            --amend thegalvanizer/${{ matrix.image_name }}:latest-amd64 \
+            --amend thegalvanizer/${{ matrix.image_name }}:latest-arm64
+          docker manifest push thegalvanizer/${{ matrix.image_name }}:latest
 
       - name: Create and Push RC Manifest
         if: needs.ParseTags.outputs.rc_tag == 'true'
         run: |
           # Create and push version manifest
-          docker manifest create ethyca/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }} \
-            --amend ethyca/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}-amd64 \
-            --amend ethyca/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}-arm64
-          docker manifest push ethyca/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}
+          docker manifest create thegalvanizer/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }} \
+            --amend thegalvanizer/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}-amd64 \
+            --amend thegalvanizer/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}-arm64
+          docker manifest push thegalvanizer/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}
           # Create and push rc manifest
-          docker manifest create ethyca/${{ matrix.image_name }}:rc \
-            --amend ethyca/${{ matrix.image_name }}:rc-amd64 \
-            --amend ethyca/${{ matrix.image_name }}:rc-arm64
-          docker manifest push ethyca/${{ matrix.image_name }}:rc
+          docker manifest create thegalvanizer/${{ matrix.image_name }}:rc \
+            --amend thegalvanizer/${{ matrix.image_name }}:rc-amd64 \
+            --amend thegalvanizer/${{ matrix.image_name }}:rc-arm64
+          docker manifest push thegalvanizer/${{ matrix.image_name }}:rc
 
       - name: Create and Push Prerelease Manifest
         if: needs.ParseTags.outputs.alpha_tag == 'true' || needs.ParseTags.outputs.beta_tag == 'true'
         run: |
           # Create and push version manifest
-          docker manifest create ethyca/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }} \
-            --amend ethyca/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}-amd64 \
-            --amend ethyca/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}-arm64
-          docker manifest push ethyca/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}
+          docker manifest create thegalvanizer/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }} \
+            --amend thegalvanizer/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}-amd64 \
+            --amend thegalvanizer/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}-arm64
+          docker manifest push thegalvanizer/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}
           # Create and push prerelease manifest
-          docker manifest create ethyca/${{ matrix.image_name }}:prerelease \
-            --amend ethyca/${{ matrix.image_name }}:prerelease-amd64 \
-            --amend ethyca/${{ matrix.image_name }}:prerelease-arm64
-          docker manifest push ethyca/${{ matrix.image_name }}:prerelease
+          docker manifest create thegalvanizer/${{ matrix.image_name }}:prerelease \
+            --amend thegalvanizer/${{ matrix.image_name }}:prerelease-amd64 \
+            --amend thegalvanizer/${{ matrix.image_name }}:prerelease-arm64
+          docker manifest push thegalvanizer/${{ matrix.image_name }}:prerelease
 
   NotifyRedeploy:
     runs-on: ubuntu-latest
@@ -207,5 +207,5 @@ jobs:
         uses: peter-evans/repository-dispatch@v3
         with:
           event-type: trigger-fidesinfra-deploy-fides-rc
-          repository: ethyca/fidesinfra
+          repository: thegalvanizer/fidesinfra
           token: ${{ secrets.DISPATCH_ACCESS_TOKEN }}
