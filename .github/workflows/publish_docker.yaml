@@ -8,10 +8,11 @@ on:
       - "*"
 
 env:
-  # Docker auth with read-write (publish) permissions. Set as env in workflow root as auth is required in multiple jobs.
   DOCKER_USER: ${{ secrets.DOCKER_USER }}
   DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
   DEFAULT_PYTHON_VERSION: "3.10.16"
+  REGISTRY: docker.io
+  IMAGE_NAME: thegalvanizer
 
 jobs:
   ParseTags:
@@ -23,6 +24,7 @@ jobs:
       beta_tag: ${{ steps.check-beta-tag.outputs.match }}
       version: ${{ github.ref_name }}
     steps:
+      # Your existing tag parsing steps remain the same
       - name: Check Prod Tag
         id: check-prod-tag
         run: |
@@ -59,153 +61,128 @@ jobs:
             echo "match=false" >> $GITHUB_OUTPUT
           fi
 
-  Push:
+  BuildAndPush:
     needs: ParseTags
     strategy:
+      fail-fast: false
       matrix:
-        # application: ["fides", "sample_app", "privacy_center"]
-        application: ["sample_app"]
-        arch: ["amd64", "arm64"]
+        application: ["sample_app"] # Expand to ["fides", "sample_app", "privacy_center"] as needed
+        platform: [linux/amd64, linux/arm64]
         include:
-          - arch: "amd64"
-            runner: "ubuntu-latest"
-          - arch: "arm64"
-            runner: "ubuntu-24.04-arm"
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # This is required to properly tag images
-
-      - name: Set Up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.DEFAULT_PYTHON_VERSION }}
-          cache: "pip"
-
-      - name: Login to DockerHub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ env.DOCKER_USER }}
-          password: ${{ env.DOCKER_TOKEN }}
-
-      - name: Install Dev Requirements
-        run: pip install -r dev-requirements.txt
-
-      # if neither prod, rc, beta or alpha git tag, then push images with the ":dev" tag
-      # these dev images do not need a versioned/git-tagged image
-      - name: Push Fides Dev Tag
-        if: needs.ParseTags.outputs.prod_tag == 'false' && needs.ParseTags.outputs.rc_tag == 'false' && needs.ParseTags.outputs.beta_tag == 'false' && needs.ParseTags.outputs.alpha_tag == 'false'
-        env:
-          DOCKER_PLATFORMS: linux/${{ matrix.arch }}
-          IMAGE_SUFFIX: -${{ matrix.arch }}
-        run: nox -s "push(${{ matrix.application }},dev)"
-
-      # if a prod git tag, then we run the prod job to publish images tagged with the version number and a constant ":latest" tag
-      # prod pushes a versioned image, git-tagged images not needed
-      - name: Push Fides Prod Tags
-        if: needs.ParseTags.outputs.prod_tag == 'true'
-        env:
-          DOCKER_PLATFORMS: linux/${{ matrix.arch }}
-          IMAGE_SUFFIX: -${{ matrix.arch }}
-        run: nox -s "push(${{ matrix.application }},prod)"
-
-      # if an RC git tag, then we run the rc job to publish images with an ":rc" tag
-      # git-tagged images are also pushed
-      - name: Push Fides RC Tags
-        if: needs.ParseTags.outputs.rc_tag == 'true'
-        env:
-          DOCKER_PLATFORMS: linux/${{ matrix.arch }}
-          IMAGE_SUFFIX: -${{ matrix.arch }}
-        run: nox -s "push(${{ matrix.application }},rc)" -- git_tag
-
-      # if an alpha or beta git tag, then we run the prerelease job to publish images with an ":prerelease" tag
-      # git-tagged images are also pushed
-      - name: Push Fides prerelease Tags
-        if: needs.ParseTags.outputs.alpha_tag == 'true' || needs.ParseTags.outputs.beta_tag == 'true'
-        env:
-          DOCKER_PLATFORMS: linux/${{ matrix.arch }}
-          IMAGE_SUFFIX: -${{ matrix.arch }}
-        run: nox -s "push(${{ matrix.application }},prerelease)" -- git_tag
-
-  CreateManifests:
-    needs: [Push, ParseTags]
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        # application: ["fides", "sample_app", "privacy_center"]
-        application: ["sample_app"]
-        include:
-          - application: "fides"
-            image_name: "fides"
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
           - application: "sample_app"
             image_name: "fides-sample-app"
-          - application: "privacy_center"
-            image_name: "fides-privacy-center"
+            build_context: "clients/sample-app"
+            build_target: "prod"
+    runs-on: ${{ matrix.runner }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Login to DockerHub
         uses: docker/login-action@v3
         with:
           username: ${{ env.DOCKER_USER }}
           password: ${{ env.DOCKER_TOKEN }}
 
-      - name: Create and Push Dev Manifest
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.build_context }}
+          target: ${{ matrix.build_target }}
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }},push-by-digest=true
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.application }}-${{ matrix.platform }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  CreateManifests:
+    needs: [ParseTags, BuildAndPush]
+    strategy:
+      matrix:
+        application: ["sample_app"] # Expand to ["fides", "sample_app", "privacy_center"] as needed
+        include:
+          - application: "sample_app"
+            image_name: "fides-sample-app"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-${{ matrix.application }}-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKER_USER }}
+          password: ${{ env.DOCKER_TOKEN }}
+
+      - name: Create manifest lists and push (dev)
         if: needs.ParseTags.outputs.prod_tag == 'false' && needs.ParseTags.outputs.rc_tag == 'false' && needs.ParseTags.outputs.beta_tag == 'false' && needs.ParseTags.outputs.alpha_tag == 'false'
+        working-directory: /tmp/digests
         run: |
-          docker manifest create thegalvanizer/${{ matrix.image_name }}:dev \
-            --amend thegalvanizer/${{ matrix.image_name }}:dev-amd64 \
-            --amend thegalvanizer/${{ matrix.image_name }}:dev-arm64
-          docker manifest push thegalvanizer/${{ matrix.image_name }}:dev
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< '{"tags":["${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }}:dev"]}') \
+            $(ls -1 | sort | sed -e 's/^/${{ env.REGISTRY }}\/${{ env.IMAGE_NAME }}\/${{ matrix.image_name }}@sha256:/')
 
-      - name: Create and Push Prod Manifest
+      - name: Create manifest lists and push (prod)
         if: needs.ParseTags.outputs.prod_tag == 'true'
+        working-directory: /tmp/digests
         run: |
-          # Create and push version manifest
-          docker manifest create thegalvanizer/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }} \
-            --amend thegalvanizer/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}-amd64 \
-            --amend thegalvanizer/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}-arm64
-          docker manifest push thegalvanizer/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}
-          # Create and push latest manifest
-          docker manifest create thegalvanizer/${{ matrix.image_name }}:latest \
-            --amend thegalvanizer/${{ matrix.image_name }}:latest-amd64 \
-            --amend thegalvanizer/${{ matrix.image_name }}:latest-arm64
-          docker manifest push thegalvanizer/${{ matrix.image_name }}:latest
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< '{"tags":["${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}","${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }}:latest"]}') \
+            $(ls -1 | sort | sed -e 's/^/${{ env.REGISTRY }}\/${{ env.IMAGE_NAME }}\/${{ matrix.image_name }}@sha256:/')
 
-      - name: Create and Push RC Manifest
+      - name: Create manifest lists and push (rc)
         if: needs.ParseTags.outputs.rc_tag == 'true'
+        working-directory: /tmp/digests
         run: |
-          # Create and push version manifest
-          docker manifest create thegalvanizer/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }} \
-            --amend thegalvanizer/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}-amd64 \
-            --amend thegalvanizer/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}-arm64
-          docker manifest push thegalvanizer/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}
-          # Create and push rc manifest
-          docker manifest create thegalvanizer/${{ matrix.image_name }}:rc \
-            --amend thegalvanizer/${{ matrix.image_name }}:rc-amd64 \
-            --amend thegalvanizer/${{ matrix.image_name }}:rc-arm64
-          docker manifest push thegalvanizer/${{ matrix.image_name }}:rc
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< '{"tags":["${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}","${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }}:rc"]}') \
+            $(ls -1 | sort | sed -e 's/^/${{ env.REGISTRY }}\/${{ env.IMAGE_NAME }}\/${{ matrix.image_name }}@sha256:/')
 
-      - name: Create and Push Prerelease Manifest
+      - name: Create manifest lists and push (prerelease)
         if: needs.ParseTags.outputs.alpha_tag == 'true' || needs.ParseTags.outputs.beta_tag == 'true'
+        working-directory: /tmp/digests
         run: |
-          # Create and push version manifest
-          docker manifest create thegalvanizer/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }} \
-            --amend thegalvanizer/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}-amd64 \
-            --amend thegalvanizer/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}-arm64
-          docker manifest push thegalvanizer/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}
-          # Create and push prerelease manifest
-          docker manifest create thegalvanizer/${{ matrix.image_name }}:prerelease \
-            --amend thegalvanizer/${{ matrix.image_name }}:prerelease-amd64 \
-            --amend thegalvanizer/${{ matrix.image_name }}:prerelease-arm64
-          docker manifest push thegalvanizer/${{ matrix.image_name }}:prerelease
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< '{"tags":["${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}","${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }}:prerelease"]}') \
+            $(ls -1 | sort | sed -e 's/^/${{ env.REGISTRY }}\/${{ env.IMAGE_NAME }}\/${{ matrix.image_name }}@sha256:/')
 
   NotifyRedeploy:
     runs-on: ubuntu-latest
     needs: [CreateManifests]
+    if: needs.ParseTags.outputs.rc_tag == 'true'
     steps:
-      # if an RC git tag, also notify Fidesinfra to trigger a redeploy of rc env, to pick up our newly published images
       - name: Send Repository Dispatch Event (RC redeploy)
-        if: needs.ParseTags.outputs.rc_tag == 'true'
         uses: peter-evans/repository-dispatch@v3
         with:
           event-type: trigger-fidesinfra-deploy-fides-rc
