@@ -109,19 +109,19 @@ jobs:
           target: ${{ matrix.build_target }}
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
-          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest
         run: |
-          mkdir -p /tmp/digests
+          mkdir -p ${{ runner.temp }}/digests
           digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
 
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
           name: digests-${{ matrix.application }}-${{ matrix.arch }}
-          path: /tmp/digests/*
+          path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
 
@@ -138,7 +138,7 @@ jobs:
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
-          path: /tmp/digests
+          path: ${{ runner.temp }}/digests
           pattern: digests-${{ matrix.application }}-*
           merge-multiple: true
 
@@ -153,28 +153,28 @@ jobs:
 
       - name: Create manifest lists and push (dev)
         if: needs.ParseTags.outputs.prod_tag == 'false' && needs.ParseTags.outputs.rc_tag == 'false' && needs.ParseTags.outputs.beta_tag == 'false' && needs.ParseTags.outputs.alpha_tag == 'false'
-        working-directory: /tmp/digests
+        working-directory: ${{ runner.temp }}/digests
         run: |
           docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< '{"tags":["${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }}:dev"]}') \
             $(ls -1 | sort | sed -e 's/^/${{ env.REGISTRY }}\/${{ env.IMAGE_NAME }}\/${{ matrix.image_name }}@sha256:/')
 
       - name: Create manifest lists and push (prod)
         if: needs.ParseTags.outputs.prod_tag == 'true'
-        working-directory: /tmp/digests
+        working-directory: ${{ runner.temp }}/digests
         run: |
           docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< '{"tags":["${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}","${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }}:latest"]}') \
             $(ls -1 | sort | sed -e 's/^/${{ env.REGISTRY }}\/${{ env.IMAGE_NAME }}\/${{ matrix.image_name }}@sha256:/')
 
       - name: Create manifest lists and push (rc)
         if: needs.ParseTags.outputs.rc_tag == 'true'
-        working-directory: /tmp/digests
+        working-directory: ${{ runner.temp }}/digests
         run: |
           docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< '{"tags":["${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}","${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }}:rc"]}') \
             $(ls -1 | sort | sed -e 's/^/${{ env.REGISTRY }}\/${{ env.IMAGE_NAME }}\/${{ matrix.image_name }}@sha256:/')
 
       - name: Create manifest lists and push (prerelease)
         if: needs.ParseTags.outputs.alpha_tag == 'true' || needs.ParseTags.outputs.beta_tag == 'true'
-        working-directory: /tmp/digests
+        working-directory: ${{ runner.temp }}/digests
         run: |
           docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< '{"tags":["${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}","${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }}:prerelease"]}') \
             $(ls -1 | sort | sed -e 's/^/${{ env.REGISTRY }}\/${{ env.IMAGE_NAME }}\/${{ matrix.image_name }}@sha256:/')
