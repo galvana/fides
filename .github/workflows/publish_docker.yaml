@@ -63,7 +63,8 @@ jobs:
     needs: ParseTags
     strategy:
       matrix:
-        application: ["fides", "sample_app", "privacy_center"]
+        # application: ["fides", "sample_app", "privacy_center"]
+        application: ["sample_app"]
         arch: ["amd64", "arm64"]
         include:
           - arch: "amd64"
@@ -132,7 +133,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        application: ["fides", "sample_app", "privacy_center"]
+        # application: ["fides", "sample_app", "privacy_center"]
+        application: ["sample_app"]
         include:
           - application: "fides"
             image_name: "fides"
