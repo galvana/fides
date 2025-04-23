@@ -159,17 +159,17 @@ jobs:
           tags: |
             # When the GitHub ref is a tag that matches the production pattern
             # Tag as both the specific version and "latest"
-            type=semver,pattern={{version}},enable=${{ needs.ParseTags.outputs.prod_tag == 'true' }}
+            type=raw,value=${{ needs.ParseTags.outputs.version }},enable=${{ needs.ParseTags.outputs.prod_tag == 'true' }}
             type=raw,value=latest,enable=${{ needs.ParseTags.outputs.prod_tag == 'true' }}
 
             # When the GitHub ref is a tag that matches the RC pattern
             # Tag as both the specific version and "rc"
-            type=semver,pattern={{version}},enable=${{ needs.ParseTags.outputs.rc_tag == 'true' }}
+            type=raw,value=${{ needs.ParseTags.outputs.version }},enable=${{ needs.ParseTags.outputs.rc_tag == 'true' }}
             type=raw,value=rc,enable=${{ needs.ParseTags.outputs.rc_tag == 'true' }}
 
             # When the GitHub ref is a tag that matches the alpha or beta pattern
             # Tag as both the specific version and "prerelease"
-            type=semver,pattern={{version}},enable=${{ needs.ParseTags.outputs.alpha_tag == 'true' || needs.ParseTags.outputs.beta_tag == 'true' }}
+            type=raw,value=${{ needs.ParseTags.outputs.version }},enable=${{ needs.ParseTags.outputs.alpha_tag == 'true' || needs.ParseTags.outputs.beta_tag == 'true' }}
             type=raw,value=prerelease,enable=${{ needs.ParseTags.outputs.alpha_tag == 'true' || needs.ParseTags.outputs.beta_tag == 'true' }}
 
             # When NOT a recognized tag (main branch push)
