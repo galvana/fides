@@ -12,7 +12,7 @@ env:
   DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
   DEFAULT_PYTHON_VERSION: "3.10.16"
   REGISTRY: docker.io
-  IMAGE_NAME: thegalvanizer
+  REPO_NAME: thegalvanizer
 
 jobs:
   ParseTags:
@@ -24,7 +24,6 @@ jobs:
       beta_tag: ${{ steps.check-beta-tag.outputs.match }}
       version: ${{ github.ref_name }}
     steps:
-      # Your existing tag parsing steps remain the same
       - name: Check Prod Tag
         id: check-prod-tag
         run: |
@@ -61,7 +60,7 @@ jobs:
             echo "match=false" >> $GITHUB_OUTPUT
           fi
 
-  BuildAndPush:
+  Push:
     needs: ParseTags
     strategy:
       fail-fast: false
@@ -90,7 +89,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }}
+          images: ${{ env.REGISTRY }}/${{ env.REPO_NAME }}/${{ matrix.image_name }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -109,7 +108,7 @@ jobs:
           target: ${{ matrix.build_target }}
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
-          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.REPO_NAME }}/${{ matrix.image_name }},push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest
         run: |
@@ -151,33 +150,31 @@ jobs:
           username: ${{ env.DOCKER_USER }}
           password: ${{ env.DOCKER_TOKEN }}
 
-      - name: Create manifest lists and push (dev)
-        if: needs.ParseTags.outputs.prod_tag == 'false' && needs.ParseTags.outputs.rc_tag == 'false' && needs.ParseTags.outputs.beta_tag == 'false' && needs.ParseTags.outputs.alpha_tag == 'false'
-        working-directory: ${{ runner.temp }}/digests
-        run: |
-          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< '{"tags":["${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }}:dev"]}') \
-            $(ls -1 | sort | sed -e 's/^/${{ env.REGISTRY }}\/${{ env.IMAGE_NAME }}\/${{ matrix.image_name }}@sha256:/')
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ env.REPO_NAME }}/${{ matrix.image_name }}
+          tags: |
+            type=raw,value=dev,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ needs.ParseTags.outputs.prod_tag == 'true' }}
+            type=raw,value=rc,enable=${{ needs.ParseTags.outputs.rc_tag == 'true' }}
+            type=raw,value=prerelease,enable=${{ needs.ParseTags.outputs.alpha_tag == 'true' || needs.ParseTags.outputs.beta_tag == 'true' }}
+            type=ref,event=tag
+            type=semver,pattern={{version}}
 
-      - name: Create manifest lists and push (prod)
-        if: needs.ParseTags.outputs.prod_tag == 'true'
+      - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests
         run: |
-          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< '{"tags":["${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}","${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }}:latest"]}') \
-            $(ls -1 | sort | sed -e 's/^/${{ env.REGISTRY }}\/${{ env.IMAGE_NAME }}\/${{ matrix.image_name }}@sha256:/')
+          REGISTRY_IMAGE="${{ env.REGISTRY }}/${{ env.REPO_NAME }}/${{ matrix.image_name }}"
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '$REGISTRY_IMAGE@sha256:%s ' *)
 
-      - name: Create manifest lists and push (rc)
-        if: needs.ParseTags.outputs.rc_tag == 'true'
-        working-directory: ${{ runner.temp }}/digests
+      - name: Inspect image
         run: |
-          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< '{"tags":["${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}","${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }}:rc"]}') \
-            $(ls -1 | sort | sed -e 's/^/${{ env.REGISTRY }}\/${{ env.IMAGE_NAME }}\/${{ matrix.image_name }}@sha256:/')
-
-      - name: Create manifest lists and push (prerelease)
-        if: needs.ParseTags.outputs.alpha_tag == 'true' || needs.ParseTags.outputs.beta_tag == 'true'
-        working-directory: ${{ runner.temp }}/digests
-        run: |
-          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< '{"tags":["${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }}:${{ needs.ParseTags.outputs.version }}","${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_name }}:prerelease"]}') \
-            $(ls -1 | sort | sed -e 's/^/${{ env.REGISTRY }}\/${{ env.IMAGE_NAME }}\/${{ matrix.image_name }}@sha256:/')
+          REGISTRY_IMAGE="${{ env.REGISTRY }}/${{ env.REPO_NAME }}/${{ matrix.image_name }}"
+          docker buildx imagetools inspect $REGISTRY_IMAGE:${{ steps.meta.outputs.version }}
 
   NotifyRedeploy:
     runs-on: ubuntu-latest
