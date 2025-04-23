@@ -125,7 +125,7 @@ jobs:
           retention-days: 1
 
   CreateManifests:
-    needs: [ParseTags, BuildAndPush]
+    needs: [ParseTags, Push]
     strategy:
       matrix:
         application: ["sample_app"] # Expand to ["fides", "sample_app", "privacy_center"] as needed
