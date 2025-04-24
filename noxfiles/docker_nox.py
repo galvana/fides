@@ -61,7 +61,6 @@ def generate_buildx_command(
         "buildx",
         "build",
         "--push",
-        "--provenance=false",
         f"--target={docker_build_target}",
         "--platform",
         DOCKER_PLATFORMS,

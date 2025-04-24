@@ -22,13 +22,13 @@ COMPOSE_FILE_LIST = {
 }
 
 # Image Names & Tags
-REGISTRY = "ethyca"
+REGISTRY = "thegalvanizer"
 IMAGE_NAME = "fides"
 CONTAINER_NAME = "fides"
 COMPOSE_SERVICE_NAME = "fides"
 
 # Image Names & Tags
-REGISTRY = "ethyca"
+REGISTRY = "thegalvanizer"
 IMAGE_NAME = "fides"
 IMAGE = f"{REGISTRY}/{IMAGE_NAME}"
 IMAGE_LOCAL = f"{IMAGE}:local"
